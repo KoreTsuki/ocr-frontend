@@ -1,0 +1,44 @@
+name: Semgrep Code Scan
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  semgrep-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+
+     # - name: Authenticate Semgrep Pro
+     #   env:
+     #     SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+     #   run: semgrep login
+
+
+      # 使用多种官方规则库扫描
+      - name: Run Semgrep with Official Rules
+        run: |
+          semgrep --config "p/javascript" \
+                  --config "p/typescript" \
+                  --config "p/xss" \
+                  --config "p/sql-injection" \
+                  --config "p/security-audit" .
+
+      # 使用 Trail of Bits 规则库扫描
+      - name: Run Semgrep with Trail of Bits Rules
+        run: semgrep --config "p/trailofbits" .
+
