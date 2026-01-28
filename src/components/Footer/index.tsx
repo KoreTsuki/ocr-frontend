@@ -24,12 +24,7 @@ const Footer: React.FC = () => {
           href: 'https://github.com/KoreTsuki',
           blankTarget: true,
         },
-        // {
-        //   key: 'AI-BI',
-        //   title: 'AI-BI',
-        //   href: 'https://ant.design',
-        //   blankTarget: true,
-        // },
+
       ]}
     />
   );

@@ -57,3 +57,22 @@ export async function getTotalByUrlUsingPost(
     ...(options || {}),
   });
 }
+
+/** 获取当前用户的全部识别结果 GET /api/ocr/getUserResults */
+export async function getUserOcrResultsUsingGet(options?: { [key: string]: any }) {
+  return request<API.ResultListOcrResult_>('/api/ocr/getUserResults', {
+    method: 'GET',
+    ...(options || {}),
+  });
+}
+
+/** 根据识别结果ID删除该条识别结果 DELETE /api/ocr/deleteById/{id} */
+export async function deleteOcrResultUsingDelete(
+  id: number,
+  options?: { [key: string]: any },
+) {
+  return request<API.ResultBoolean_>(`/api/ocr/deleteById/${id}`, {
+    method: 'DELETE',
+    ...(options || {}),
+  });
+}

@@ -80,4 +80,39 @@ declare namespace API {
     /** timestamp */
     timestamp?: string;
   };
+
+  type Coordinate = {
+    x?: number;
+    y?: number;
+  };
+
+  type OcrText = {
+    text?: string;
+    score?: number;
+  };
+
+  type OcrResultItem = {
+    coordinates?: Coordinate[];
+    ocrText?: OcrText;
+  };
+
+  type OcrResult = {
+    id?: number;
+    userId?: number;
+    imageUrl?: string;
+    textResult?: string;
+    isDelete?: number;
+  };
+
+  type ResultListOcrResult_ = {
+    code?: number;
+    message?: string;
+    data?: OcrResult[];
+  };
+
+  type ResultBoolean_ = {
+    code?: number;
+    message?: string;
+    data?: boolean;
+  };
 }

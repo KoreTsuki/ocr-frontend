@@ -5,6 +5,7 @@ export default [
     routes: [{ name: '登录', path: '/user/login', component: './User/Login' }],
   },
   { path: '/ocr', name: 'OCR识别处理', icon: 'smile', component: './Ocr' },
+  { path: '/ocr-results', name: '识别结果列表', icon: 'smile', component: './OcrResults' },
   { path: '/welcome', name: '欢迎', icon: 'smile', component: './Welcome' },
   {
     path: '/admin',
