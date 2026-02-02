@@ -115,7 +115,7 @@ const Ocr: React.FC = () => {
             />
           ) : (
             <Upload.Dragger
-              accept="image/*"
+              accept="image/*,.pdf"
               fileList={fileList.slice(-1)}
               beforeUpload={(file) => {
                 setFileList([file]);

@@ -13,7 +13,7 @@ const Footer: React.FC = () => {
       copyright={`${currentYear} ${defaultMessage}`}
       links={[
         {
-          key: '未来社畜养成基地',
+          key: 'KoreTsuki',
           title: 'KoreTsuki',
           href: 'https://github.com/KoreTsuki',
           blankTarget: true,
