@@ -36,10 +36,12 @@ const OcrResultsPage = () => {
   const [parsedItems, setParsedItems] = useState<OcrItem[]>([]); // 图片用的结构化数据
   const [rawText, setRawText] = useState<string>('');          // PDF用的纯文本数据
 
-  // 判断是否为 PDF 文件
+  // 判断是否为 PDF 文件 (优化版：忽略 URL 参数)
   const checkIsPdf = (url?: string) => {
     if (!url) return false;
-    return url.toLowerCase().endsWith('.pdf');
+    // 分割 ? 取前半部分，确保带 token 或其他参数的 pdf 也能被识别
+    const cleanUrl = url.split('?')[0].toLowerCase();
+    return cleanUrl.endsWith('.pdf');
   };
 
   const fetchResults = async () => {
@@ -172,7 +174,18 @@ const OcrResultsPage = () => {
           );
         }
         // 图片显示缩略图
-        return <Image width={80} height={80} style={{objectFit: 'cover'}} src={url} alt="img" placeholder />;
+        // 添加 referrerPolicy="no-referrer" 解决防盗链问题
+        return (
+          <Image
+            width={80}
+            height={80}
+            style={{objectFit: 'cover'}}
+            src={url}
+            alt="img"
+            placeholder
+            referrerPolicy="no-referrer"
+          />
+        );
       },
     },
     {
@@ -275,7 +288,12 @@ const OcrResultsPage = () => {
                 </Text>
               </div>
             ) : (
-              <Image src={currentRecord?.imageUrl} style={{ maxHeight: 300, objectFit: 'contain' }} />
+              // 添加 referrerPolicy="no-referrer"
+              <Image
+                src={currentRecord?.imageUrl}
+                style={{ maxHeight: 300, objectFit: 'contain' }}
+                referrerPolicy="no-referrer"
+              />
             )}
           </div>
         </Card>
