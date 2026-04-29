@@ -64,6 +64,7 @@ declare namespace API {
 
   type UserEntity = {
     id?: number;
+    name?: string;
     lines?: number;
     openid?: string;
   };

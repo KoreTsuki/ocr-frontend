@@ -85,9 +85,16 @@ export async function getTaskStatusUsingGet(
   });
 }
 
+/** 获取当前用户任务列表 GET /api/ocr/task/list */
+export async function getTaskListUsingGet(options?: { [key: string]: any }) {
+  return request<any>('/api/ocr/task/list', {
+    method: 'GET',
+    ...(options || {}),
+  });
+}
+
 /** 上传文件获取结果 POST /api/ocr/getByFile */
 export async function getTextOnlyByFileUsingPost(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: any,
   body: {},
   file?: File,
@@ -128,7 +135,6 @@ export async function getTextOnlyByFileUsingPost(
 
 /** 通过url获取结果 POST /api/ocr/getTotalByUrl */
 export async function getTotalByUrlUsingPost(
-  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
   params: any,
   options?: { [key: string]: any },
 ) {
@@ -144,6 +150,30 @@ export async function getTotalByUrlUsingPost(
 /** 获取当前用户的全部识别结果 GET /api/ocr/getUserResults */
 export async function getUserOcrResultsUsingGet(options?: { [key: string]: any }) {
   return request<any>('/api/ocr/getUserResults', {
+    method: 'GET',
+    ...(options || {}),
+  });
+}
+
+/** 人工审核OCR结果 POST /api/ocr/audit/${param0} */
+export async function auditOcrResultUsingPost(
+  id: number,
+  body: { auditText: string },
+  options?: { [key: string]: any },
+) {
+  return request<any>(`/api/ocr/audit/${id}`, {
+    method: 'POST',
+    data: body,
+    ...(options || {}),
+  });
+}
+
+/** 获取OCR审核日志 GET /api/ocr/audit/logs/${param0} */
+export async function getAuditLogsUsingGet(
+  id: number,
+  options?: { [key: string]: any },
+) {
+  return request<any>(`/api/ocr/audit/logs/${id}`, {
     method: 'GET',
     ...(options || {}),
   });

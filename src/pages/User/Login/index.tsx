@@ -79,6 +79,10 @@ const Login: React.FC = () => {
     const res = await getAuthUsingPost(values)
       if (res.code === 200) {
         message.success(res.msg);
+        if (!res.data?.token) {
+          message.error('登录返回缺少 token');
+          return;
+        }
         localStorage.setItem('token', res.data.token);
         await fetchUserInfo();
         const urlParams = new URL(window.location.href).searchParams;

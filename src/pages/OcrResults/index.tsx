@@ -1,20 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Table, Button, message, Space, Card, Typography,
-  Image, Drawer, List, Tag, Tooltip, Divider, Empty, Input
-} from 'antd';
-import {
-  DeleteOutlined, ReloadOutlined, EyeOutlined,
-  CopyOutlined, DownloadOutlined, FilePdfOutlined,
-  FileImageOutlined, FileTextOutlined
-} from '@ant-design/icons';
-import { getUserOcrResultsUsingGet, deleteOcrResultUsingDelete } from '@/services/ocr/ocr';
-import type { OcrResult } from '@/services/ocr/typings';
+import { Table, Button, message, Space, Card, Typography, Image, Drawer, List, Tag, Empty, Input } from 'antd';
+import { DeleteOutlined, ReloadOutlined, EyeOutlined, CopyOutlined, FilePdfOutlined, SaveOutlined, FileTextOutlined } from '@ant-design/icons';
+import { getUserOcrResultsUsingGet, deleteOcrResultUsingDelete, auditOcrResultUsingPost, getAuditLogsUsingGet } from '@/services/ocr/ocr';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
-// JSON 格式的 Item 结构 (用于图片)
 interface OcrItem {
   coordinates: { x: number; y: number }[];
   ocrText: {
@@ -24,24 +15,20 @@ interface OcrItem {
 }
 
 const OcrResultsPage = () => {
-  const [data, setData] = useState<OcrResult[]>([]);
+  const [data, setData] = useState<API.OcrResult[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-
-  // 抽屉状态
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [currentRecord, setCurrentRecord] = useState<OcrResult | null>(null);
-
-  // 详情数据状态
+  const [currentRecord, setCurrentRecord] = useState<API.OcrResult | null>(null);
   const [isPdf, setIsPdf] = useState(false);
-  const [parsedItems, setParsedItems] = useState<OcrItem[]>([]); // 图片用的结构化数据
-  const [rawText, setRawText] = useState<string>('');          // PDF用的纯文本数据
+  const [parsedItems, setParsedItems] = useState<OcrItem[]>([]);
+  const [rawText, setRawText] = useState<string>('');
+  const [auditText, setAuditText] = useState<string>('');
+  const [auditLogs, setAuditLogs] = useState<API.OcrAuditLog[]>([]);
+  const [savingAudit, setSavingAudit] = useState(false);
 
-  // 判断是否为 PDF 文件 (优化版：忽略 URL 参数)
   const checkIsPdf = (url?: string) => {
     if (!url) return false;
-    // 分割 ? 取前半部分，确保带 token 或其他参数的 pdf 也能被识别
-    const cleanUrl = url.split('?')[0].toLowerCase();
-    return cleanUrl.endsWith('.pdf');
+    return url.split('?')[0].toLowerCase().endsWith('.pdf');
   };
 
   const fetchResults = async () => {
@@ -64,6 +51,19 @@ const OcrResultsPage = () => {
     fetchResults();
   }, []);
 
+  const extractPlainText = (record: API.OcrResult) => {
+    const resultStr = record.textResult || '';
+    if (checkIsPdf(record.imageUrl)) {
+      return resultStr;
+    }
+    try {
+      const items = JSON.parse(resultStr);
+      return items.map((item: OcrItem) => item.ocrText?.text).join('\n');
+    } catch (error) {
+      return resultStr;
+    }
+  };
+
   const handleDelete = async (id: number) => {
     try {
       const response = await deleteOcrResultUsingDelete(id);
@@ -78,64 +78,106 @@ const OcrResultsPage = () => {
     }
   };
 
-  // 打开详情
-  const showDetails = (record: OcrResult) => {
-    setCurrentRecord(record);
-    const _isPdf = checkIsPdf(record.imageUrl);
-    setIsPdf(_isPdf);
+  const loadAuditLogs = async (id?: number) => {
+    if (!id) {
+      setAuditLogs([]);
+      return;
+    }
+    try {
+      const response = await getAuditLogsUsingGet(id);
+      if (response.code === 200) {
+        setAuditLogs(response.data || []);
+      }
+    } catch (error) {
+      setAuditLogs([]);
+    }
+  };
 
+  const showDetails = (record: API.OcrResult) => {
+    setCurrentRecord(record);
+    const pdf = checkIsPdf(record.imageUrl);
     const resultStr = record.textResult || '';
 
-    if (_isPdf) {
-      // === PDF 处理逻辑 ===
-      // PDF 的结果直接是纯文本，不需要 JSON 解析
+    setIsPdf(pdf);
+    if (pdf) {
       setRawText(resultStr);
       setParsedItems([]);
     } else {
-      // === 图片处理逻辑 ===
-      // 图片的结果是 JSON 字符串，尝试解析
       try {
         const items = JSON.parse(resultStr);
         setParsedItems(items);
-        // 为了方便复制全部，同时也生成一份纯文本
-        setRawText(items.map((i: OcrItem) => i.ocrText?.text).join('\n'));
-      } catch (e) {
-        console.error("JSON Parse Error", e);
+        setRawText(items.map((item: OcrItem) => item.ocrText?.text).join('\n'));
+      } catch (error) {
         setParsedItems([]);
-        setRawText(resultStr); // 解析失败兜底显示原文
+        setRawText(resultStr);
       }
     }
 
+    setAuditText(record.auditText || extractPlainText(record));
+    loadAuditLogs(record.id);
     setDrawerVisible(true);
   };
 
-  // 复制全部文本
   const handleCopyAll = () => {
-    if (!rawText) return;
-    navigator.clipboard.writeText(rawText).then(() => {
-      message.success('已复制全部内容');
+    if (!auditText) return;
+    navigator.clipboard.writeText(auditText).then(() => {
+      message.success('已复制审核文本');
     });
   };
 
-  // 导出 TXT
+  const handleDownloadSource = () => {
+    if (currentRecord?.imageUrl) {
+      window.open(currentRecord.imageUrl, '_blank');
+    }
+  };
+
   const handleExportTxt = () => {
-    if (!rawText) return;
-    const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
+    const exportText = (auditText || rawText || '').trim();
+    if (!exportText) {
+      message.warning('暂无可导出的识别结果');
+      return;
+    }
+
+    const blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
+    const fileType = isPdf ? 'pdf' : 'image';
     link.href = url;
-    link.download = `ocr_result_${currentRecord?.id}.txt`;
+    link.download = `ocr_${fileType}_result_${currentRecord?.id || Date.now()}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    message.success('导出成功');
+    message.success('TXT 导出成功');
   };
 
-  // 下载原始文件 (PDF 或 图片)
-  const handleDownloadSource = () => {
-    if (currentRecord?.imageUrl) {
-      window.open(currentRecord.imageUrl, '_blank');
+  const handleSaveAudit = async () => {
+    if (!currentRecord?.id || !auditText.trim()) {
+      message.warning('请先填写审核文本');
+      return;
+    }
+    setSavingAudit(true);
+    try {
+      const response = await auditOcrResultUsingPost(currentRecord.id, { auditText });
+      if (response.code === 200 && response.data) {
+        message.success('审核结果已保存');
+        await fetchResults();
+        await loadAuditLogs(currentRecord.id);
+        setCurrentRecord((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            auditText,
+            auditStatus: rawText.trim() === auditText.trim() ? 1 : 2,
+          };
+        });
+      } else {
+        message.error('审核保存失败');
+      }
+    } catch (error) {
+      message.error('审核保存失败');
+    } finally {
+      setSavingAudit(false);
     }
   };
 
@@ -145,13 +187,14 @@ const OcrResultsPage = () => {
     return 'error';
   };
 
+  const getAuditStatusTag = (status?: number) => {
+    if (status === 1) return <Tag color="success">审核通过</Tag>;
+    if (status === 2) return <Tag color="processing">人工修补</Tag>;
+    return <Tag color="default">待审核</Tag>;
+  };
+
   const columns = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 70,
-    },
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
     {
       title: '文件预览',
       dataIndex: 'imageUrl',
@@ -159,73 +202,59 @@ const OcrResultsPage = () => {
       width: 120,
       render: (url: string) => {
         if (checkIsPdf(url)) {
-          // PDF 显示图标
           return (
-            <div style={{
-              width: 80, height: 80, background: '#f5f5f5',
-              display: 'flex', flexDirection: 'column',
-              justifyContent: 'center', alignItems: 'center',
-              border: '1px solid #d9d9d9', borderRadius: 4,
-              cursor: 'pointer'
-            }} onClick={() => window.open(url, '_blank')}>
+            <div
+              style={{
+                width: 80,
+                height: 80,
+                background: '#f5f5f5',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                border: '1px solid #d9d9d9',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+              onClick={() => window.open(url, '_blank')}
+            >
               <FilePdfOutlined style={{ fontSize: 32, color: '#ff4d4f' }} />
               <span style={{ fontSize: 10, marginTop: 4, color: '#666' }}>PDF文档</span>
             </div>
           );
         }
-        // 图片显示缩略图
-        // 添加 referrerPolicy="no-referrer" 解决防盗链问题
-        return (
-          <Image
-            width={80}
-            height={80}
-            style={{objectFit: 'cover'}}
-            src={url}
-            alt="img"
-            placeholder
-            referrerPolicy="no-referrer"
-          />
-        );
+        return <Image width={80} height={80} style={{ objectFit: 'cover' }} src={url} alt="img" placeholder referrerPolicy="no-referrer" />;
       },
     },
     {
       title: '类型',
       key: 'type',
       width: 80,
-      render: (_: any, record: OcrResult) => (
-        checkIsPdf(record.imageUrl)
-          ? <Tag color="red">PDF</Tag>
-          : <Tag color="blue">图片</Tag>
-      )
+      render: (_: any, record: API.OcrResult) => (checkIsPdf(record.imageUrl) ? <Tag color="red">PDF</Tag> : <Tag color="blue">图片</Tag>),
     },
     {
       title: '识别结果预览',
       dataIndex: 'textResult',
       key: 'textResult',
       ellipsis: true,
-      render: (text: string, record: OcrResult) => {
-        if (!text) return <Text disabled>无结果</Text>;
-
-        if (checkIsPdf(record.imageUrl)) {
-          // PDF 直接显示文本前一部分
-          return <Text type="secondary" ellipsis>{text.slice(0, 50)}...</Text>;
-        } else {
-          // 图片解析 JSON 后显示
-          try {
-            const items = JSON.parse(text);
-            const preview = items.slice(0, 2).map((i: any) => i.ocrText?.text).join(' ');
-            return <Text type="secondary" ellipsis>{preview}</Text>;
-          } catch {
-            return <Text type="secondary" ellipsis>{text}</Text>;
-          }
-        }
+      render: (text: string, record: API.OcrResult) => {
+        const previewText = record.auditText || extractPlainText(record) || text;
+        if (!previewText) return <Text disabled>无结果</Text>;
+        return <Text type="secondary" ellipsis>{previewText.slice(0, 50)}</Text>;
       },
+    },
+    {
+      title: '审核状态',
+      dataIndex: 'auditStatus',
+      key: 'auditStatus',
+      width: 120,
+      render: (value: number) => getAuditStatusTag(value),
     },
     {
       title: '操作',
       key: 'action',
       width: 180,
-      render: (_: any, record: OcrResult) => (
+      render: (_: any, record: API.OcrResult) => (
         <Space size="middle">
           <Button type="link" icon={<EyeOutlined />} onClick={() => showDetails(record)}>
             详情
@@ -250,29 +279,30 @@ const OcrResultsPage = () => {
         <Table columns={columns} dataSource={data} rowKey="id" loading={loading} pagination={{ pageSize: 8 }} />
       </Card>
 
-      {/* 详情抽屉 */}
       <Drawer
         title={
           <Space>
             <span>{isPdf ? 'PDF 文档详情' : '图片识别详情'}</span>
-            {isPdf && <Tag color="red">PDF</Tag>}
+            {currentRecord ? getAuditStatusTag(currentRecord.auditStatus) : null}
           </Space>
         }
-        width={700}
+        width={760}
         onClose={() => setDrawerVisible(false)}
         open={drawerVisible}
         extra={
           <Space>
             <Button type="primary" ghost icon={<CopyOutlined />} onClick={handleCopyAll}>
-              复制结果
+              复制审核文本
             </Button>
             <Button icon={<FileTextOutlined />} onClick={handleExportTxt}>
-              导出结果TXT
+              导出TXT
+            </Button>
+            <Button icon={<SaveOutlined />} onClick={handleSaveAudit} loading={savingAudit}>
+              保存审核
             </Button>
           </Space>
         }
       >
-        {/* 上半部分：原文件展示区 */}
         <Card title="原始文件" size="small" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'center', background: '#fafafa', padding: 20 }}>
             {isPdf ? (
@@ -288,19 +318,12 @@ const OcrResultsPage = () => {
                 </Text>
               </div>
             ) : (
-              // 添加 referrerPolicy="no-referrer"
-              <Image
-                src={currentRecord?.imageUrl}
-                style={{ maxHeight: 300, objectFit: 'contain' }}
-                referrerPolicy="no-referrer"
-              />
+              <Image src={currentRecord?.imageUrl} style={{ maxHeight: 300, objectFit: 'contain' }} referrerPolicy="no-referrer" />
             )}
           </div>
         </Card>
 
-        {/* 下半部分：识别结果展示区 */}
-        <Card title="识别结果" size="small">
-          {/* PDF 模式：直接显示大段文本 TextArea */}
+        <Card title="OCR原始结果" size="small" style={{ marginBottom: 20 }}>
           {isPdf ? (
             <TextArea
               value={rawText}
@@ -309,7 +332,6 @@ const OcrResultsPage = () => {
               style={{ background: '#f9f9f9', fontFamily: 'monospace', fontSize: 14 }}
             />
           ) : (
-            /* 图片模式：显示结构化列表 (带置信度) */
             <List
               itemLayout="horizontal"
               dataSource={parsedItems}
@@ -317,11 +339,7 @@ const OcrResultsPage = () => {
                 <List.Item>
                   <List.Item.Meta
                     avatar={<Tag color="geekblue">#{index + 1}</Tag>}
-                    title={
-                      <Paragraph copyable={{ text: item.ocrText?.text }} style={{ marginBottom: 0 }}>
-                        {item.ocrText?.text}
-                      </Paragraph>
-                    }
+                    title={<Paragraph copyable={{ text: item.ocrText?.text }} style={{ marginBottom: 0 }}>{item.ocrText?.text}</Paragraph>}
                     description={
                       <Space>
                         <Text type="secondary" style={{ fontSize: 12 }}>置信度:</Text>
@@ -333,8 +351,40 @@ const OcrResultsPage = () => {
               )}
             />
           )}
-
           {!rawText && <Empty description="暂无识别文字" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+        </Card>
+
+        <Card title="人工审核结果" size="small" style={{ marginBottom: 20 }}>
+          <TextArea
+            value={auditText}
+            onChange={(e) => setAuditText(e.target.value)}
+            autoSize={{ minRows: 8, maxRows: 18 }}
+            style={{ background: '#fff', fontFamily: 'monospace', fontSize: 14 }}
+          />
+        </Card>
+
+        <Card title="审核日志" size="small">
+          <List
+            locale={{ emptyText: '暂无审核日志' }}
+            dataSource={auditLogs}
+            renderItem={(item) => (
+              <List.Item>
+                <List.Item.Meta
+                  title={`审核人ID：${item.reviewerId ?? '-'} ｜ 时间：${item.createTime ?? '-'}`}
+                  description={
+                    <div>
+                      <Paragraph ellipsis={{ rows: 2, expandable: true, symbol: '展开' }}>
+                        修改前：{item.beforeText || '-'}
+                      </Paragraph>
+                      <Paragraph ellipsis={{ rows: 2, expandable: true, symbol: '展开' }}>
+                        修改后：{item.afterText || '-'}
+                      </Paragraph>
+                    </div>
+                  }
+                />
+              </List.Item>
+            )}
+          />
         </Card>
       </Drawer>
     </div>

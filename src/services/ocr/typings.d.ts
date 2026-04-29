@@ -1,24 +1,17 @@
 declare namespace API {
   type getAuthUsingPOSTParams = {
-    /** username */
     username?: string;
-    /** password */
     password?: string;
   };
 
   type getTextOnlyByFileUsingPOSTParams = {
-    /** filterType */
     filterType?: string;
-    /** isAggregate */
     isAggregate?: boolean;
   };
 
   type getTotalByUrlUsingPOSTParams = {
-    /** filterType */
     filterType?: string;
-    /** isAggregate */
     isAggregate?: boolean;
-    /** url */
     url?: string;
   };
 
@@ -64,20 +57,24 @@ declare namespace API {
 
   type UserEntity = {
     id?: number;
+    name?: string;
     lines?: number;
     openid?: string;
   };
 
   type validateUsingGETParams = {
-    /** appid */
     appid: string;
-    /** echostr */
     echostr?: string;
-    /** nonce */
     nonce?: string;
-    /** signature */
     signature?: string;
-    /** timestamp */
+    timestamp?: string;
+  };
+
+  type postUsingPOSTParams = {
+    appid: string;
+    echostr?: string;
+    nonce?: string;
+    signature?: string;
     timestamp?: string;
   };
 
@@ -101,18 +98,61 @@ declare namespace API {
     userId?: number;
     imageUrl?: string;
     textResult?: string;
+    auditText?: string;
+    auditStatus?: number;
+    reviewerId?: number;
+    auditTime?: string;
     isDelete?: number;
+  };
+
+  type OcrAuditLog = {
+    id?: number;
+    resultId?: number;
+    userId?: number;
+    reviewerId?: number;
+    beforeText?: string;
+    afterText?: string;
+    createTime?: string;
+  };
+
+  type SysOcrTask = {
+    id?: number;
+    taskId?: string;
+    userId?: number;
+    fileName?: string;
+    fileUrl?: string;
+    status?: string;
+    errorMessage?: string;
+    createTime?: string;
+    updateTime?: string;
+    startTime?: string;
+    completeTime?: string;
+    queuePosition?: number;
+    consumerId?: string;
+    executeDurationMs?: number;
   };
 
   type ResultListOcrResult_ = {
     code?: number;
-    message?: string;
+    msg?: string;
     data?: OcrResult[];
   };
 
   type ResultBoolean_ = {
     code?: number;
-    message?: string;
+    msg?: string;
     data?: boolean;
+  };
+
+  type ResultListOcrAuditLog_ = {
+    code?: number;
+    msg?: string;
+    data?: OcrAuditLog[];
+  };
+
+  type ResultListSysOcrTask_ = {
+    code?: number;
+    msg?: string;
+    data?: SysOcrTask[];
   };
 }

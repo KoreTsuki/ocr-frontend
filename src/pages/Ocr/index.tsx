@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Upload, message, Switch, Input, Card, Space, Button, Typography, Table, Tag, Progress } from 'antd';
 import type { TablePaginationConfig } from 'antd';
 import { UploadOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 
-
-import { uploadFilesUsingPost, createTaskByUrlUsingPost, getTaskStatusUsingGet } from '@/services/ocr/ocr';
+import { uploadFilesUsingPost, createTaskByUrlUsingPost, getTaskStatusUsingGet, getTaskListUsingGet } from '@/services/ocr/ocr';
 
 const { Text } = Typography;
 
@@ -14,6 +13,8 @@ interface TaskInfo {
   status: string;
   queuePosition: number;
   errorMessage?: string;
+  consumerId?: string;
+  executeDurationMs?: number;
   createTime?: string;
   updateTime?: string;
 }
@@ -25,35 +26,46 @@ const Ocr: React.FC = () => {
   const [taskList, setTaskList] = useState<TaskInfo[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  // 使用 useRef 存储最新的任务列表，防止定时器闭包拿到旧数据
   const taskListRef = useRef<TaskInfo[]>([]);
-
   const pollingInterval = useRef<number | undefined>(undefined);
 
-  // 同步 ref 和 state
   useEffect(() => {
     taskListRef.current = taskList;
   }, [taskList]);
 
-  // 停止轮询
   const stopPolling = () => {
     if (pollingInterval.current) {
       window.clearInterval(pollingInterval.current);
-      // 重置为 undefined
       pollingInterval.current = undefined;
     }
   };
 
-  // 更新任务状态的核心逻辑
+  const fetchTaskList = async () => {
+    try {
+      const response = await getTaskListUsingGet();
+      if (response.code === 200 && response.data) {
+        const tasks: TaskInfo[] = response.data.map((item: any) => ({
+          taskId: item.taskId,
+          fileName: item.fileName,
+          status: item.status,
+          queuePosition: item.queuePosition || 0,
+          errorMessage: item.errorMessage,
+          consumerId: item.consumerId,
+          executeDurationMs: item.executeDurationMs,
+          createTime: item.createTime,
+          updateTime: item.updateTime,
+        }));
+        setTaskList(tasks);
+      }
+    } catch (error) {
+      console.error('加载任务列表失败:', error);
+    }
+  };
+
   const updateTaskStatus = async () => {
     const currentTasks = taskListRef.current;
+    const activeTasks = currentTasks.filter((task) => task.status === 'WAITING' || task.status === 'PROCESSING');
 
-    // 找出还在队列中或处理中的任务
-    const activeTasks = currentTasks.filter(
-      (t) => t.status === 'WAITING' || t.status === 'PROCESSING'
-    );
-
-    // 如果没有活跃任务，停止轮询
     if (activeTasks.length === 0) {
       stopPolling();
       return;
@@ -62,7 +74,6 @@ const Ocr: React.FC = () => {
     try {
       const updatedTasks = await Promise.all(
         currentTasks.map(async (task) => {
-          // 只更新未完成的任务
           if (task.status === 'WAITING' || task.status === 'PROCESSING') {
             const response = await getTaskStatusUsingGet({ taskId: task.taskId });
             if (response.code === 200 && response.data) {
@@ -72,11 +83,13 @@ const Ocr: React.FC = () => {
                 errorMessage: response.data.errorMessage,
                 updateTime: response.data.updateTime,
                 queuePosition: response.data.queuePosition || 0,
+                consumerId: response.data.consumerId,
+                executeDurationMs: response.data.executeDurationMs,
               };
             }
           }
           return task;
-        })
+        }),
       );
       setTaskList(updatedTasks);
     } catch (error) {
@@ -84,15 +97,13 @@ const Ocr: React.FC = () => {
     }
   };
 
-  // 开始轮询
   const startPolling = () => {
-    stopPolling(); // 开启前先清除旧的
+    stopPolling();
     pollingInterval.current = window.setInterval(() => {
       updateTaskStatus();
     }, 3000);
   };
 
-  // 处理多文件上传
   const handleMultiFileUpload = async () => {
     if (fileList.length === 0) return;
     setIsUploading(true);
@@ -108,9 +119,10 @@ const Ocr: React.FC = () => {
           status: 'WAITING',
           queuePosition: item.queuePosition || 0,
         }));
-        setTaskList((prev) => [...prev, ...newTasks]);
+        setTaskList((prev) => [...newTasks, ...prev]);
         message.success(`成功上传 ${newTasks.length} 个文件`);
         startPolling();
+        fetchTaskList();
       }
     } catch (error) {
       message.error('文件上传出错');
@@ -120,7 +132,6 @@ const Ocr: React.FC = () => {
     }
   };
 
-  // 处理URL提交
   const handleUrlSubmit = async () => {
     if (!urlValue) return;
     setIsUploading(true);
@@ -133,9 +144,10 @@ const Ocr: React.FC = () => {
           status: 'WAITING',
           queuePosition: response.data.queuePosition || 0,
         };
-        setTaskList((prev) => [...prev, newTask]);
+        setTaskList((prev) => [newTask, ...prev]);
         message.success('URL提交成功');
         startPolling();
+        fetchTaskList();
       }
     } catch (error) {
       message.error('URL请求出错');
@@ -160,6 +172,7 @@ const Ocr: React.FC = () => {
     { title: '文件名', dataIndex: 'fileName', key: 'fileName' },
     { title: '状态', dataIndex: 'status', key: 'status', render: getStatusTag },
     { title: '队列位置', dataIndex: 'queuePosition', key: 'queuePosition' },
+    { title: '执行节点', dataIndex: 'consumerId', key: 'consumerId', ellipsis: true, render: (value?: string) => value || '-' },
     {
       title: '进度',
       dataIndex: 'status',
@@ -172,10 +185,18 @@ const Ocr: React.FC = () => {
         />
       ),
     },
+    {
+      title: '耗时',
+      dataIndex: 'executeDurationMs',
+      key: 'executeDurationMs',
+      render: (value?: number) => value ? `${(value / 1000).toFixed(2)}s` : '-',
+    },
+    { title: '错误信息', dataIndex: 'errorMessage', key: 'errorMessage', ellipsis: true, render: (value?: string) => value || '-' },
     { title: '更新时间', dataIndex: 'updateTime', key: 'updateTime' },
   ];
 
   useEffect(() => {
+    fetchTaskList();
     return () => stopPolling();
   }, []);
 
@@ -191,11 +212,7 @@ const Ocr: React.FC = () => {
 
           {useUrl ? (
             <Space.Compact style={{ width: '100%' }}>
-              <Input
-                placeholder="请输入图片 URL"
-                value={urlValue}
-                onChange={e => setUrlValue(e.target.value)}
-              />
+              <Input placeholder="请输入图片 URL" value={urlValue} onChange={(e) => setUrlValue(e.target.value)} />
               <Button type="primary" onClick={handleUrlSubmit} loading={isUploading}>提交</Button>
             </Space.Compact>
           ) : (
@@ -203,10 +220,10 @@ const Ocr: React.FC = () => {
               multiple
               fileList={fileList}
               beforeUpload={(file) => {
-                setFileList(prev => [...prev, file]);
+                setFileList((prev) => [...prev, file]);
                 return false;
               }}
-              onRemove={(file) => setFileList(prev => prev.filter(f => f.uid !== file.uid))}
+              onRemove={(file) => setFileList((prev) => prev.filter((item) => item.uid !== file.uid))}
             >
               <p className="ant-upload-drag-icon"><UploadOutlined /></p>
               <p className="ant-upload-text">点击或拖拽上传</p>
@@ -214,16 +231,10 @@ const Ocr: React.FC = () => {
           )}
 
           {!useUrl && (
-            <Button
-              type="primary"
-              onClick={handleMultiFileUpload}
-              disabled={fileList.length === 0}
-              loading={isUploading}
-            >
+            <Button type="primary" onClick={handleMultiFileUpload} disabled={fileList.length === 0} loading={isUploading}>
               开始上传并识别
             </Button>
           )}
-
         </Space>
       </Card>
 
